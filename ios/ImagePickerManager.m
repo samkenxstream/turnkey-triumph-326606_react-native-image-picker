@@ -20,11 +20,6 @@
 @interface ImagePickerManager (UIAdaptivePresentationControllerDelegate) <UIAdaptivePresentationControllerDelegate>
 @end
 
-#if __has_include(<PhotosUI/PHPicker.h>)
-@interface ImagePickerManager (PHPickerViewControllerDelegate) <PHPickerViewControllerDelegate>
-@end
-#endif
-
 @implementation ImagePickerManager
 
 NSString *errCameraUnavailable = @"camera_unavailable";
@@ -60,32 +55,7 @@ RCT_EXPORT_METHOD(launchImageLibrary:(NSDictionary *)options callback:(RCTRespon
     }
     
     self.options = options;
-
-#if __has_include(<PhotosUI/PHPicker.h>)
-    if (@available(iOS 14, *)) {
-        if (target == library) {
-            PHPickerConfiguration *configuration = [ImagePickerUtils makeConfigurationFromOptions:options target:target];
-            PHPickerViewController *picker = [[PHPickerViewController alloc] initWithConfiguration:configuration];
-            picker.delegate = self;
-            picker.presentationController.delegate = self;
-
-            if([self.options[@"includeExtra"] boolValue]) {
-                
-                [self checkPhotosPermissions:^(BOOL granted) {
-                    if (!granted) {
-                        self.callback(@[@{@"errorCode": errPermission}]);
-                        return;
-                    }
-                    [self showPickerViewController:picker];
-                }];
-            } else {
-                [self showPickerViewController:picker];
-            }
-            
-            return;
-        }
-    }
-#endif
+    
     UIImagePickerController *picker = [[UIImagePickerController alloc] init];
     [ImagePickerUtils setupPickerFromOptions:picker options:self.options target:target];
     picker.delegate = self;
@@ -395,76 +365,3 @@ RCT_EXPORT_METHOD(launchImageLibrary:(NSDictionary *)options callback:(RCTRespon
 }
 
 @end
-
-#if __has_include(<PhotosUI/PHPicker.h>)
-@implementation ImagePickerManager (PHPickerViewControllerDelegate)
-
-- (void)picker:(PHPickerViewController *)picker didFinishPicking:(NSArray<PHPickerResult *> *)results API_AVAILABLE(ios(14))
-{
-    [picker dismissViewControllerAnimated:YES completion:nil];
-
-    if (results.count == 0) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            self.callback(@[@{@"didCancel": @YES}]);
-        });
-        return;
-    }
-
-    dispatch_group_t completionGroup = dispatch_group_create();
-    NSMutableArray<NSDictionary *> *assets = [[NSMutableArray alloc] initWithCapacity:results.count];
-
-    for (PHPickerResult *result in results) {
-        PHAsset *asset = nil;
-        NSItemProvider *provider = result.itemProvider;
-
-        // If include extra, we fetch the PHAsset, this required library permissions
-        if([self.options[@"includeExtra"] boolValue] && result.assetIdentifier != nil) {
-            PHFetchResult* fetchResult = [PHAsset fetchAssetsWithLocalIdentifiers:@[result.assetIdentifier] options:nil];
-            asset = fetchResult.firstObject;
-        }
-        
-        dispatch_group_enter(completionGroup);
-
-        if ([provider canLoadObjectOfClass:[UIImage class]]) {
-            NSString *identifier = provider.registeredTypeIdentifiers.firstObject;
-            if ([identifier isEqualToString:@"com.apple.live-photo-bundle"]) {
-                // Handle live photos
-                identifier = @"public.jpeg";
-            }
-
-            [provider loadFileRepresentationForTypeIdentifier:identifier completionHandler:^(NSURL * _Nullable url, NSError * _Nullable error) {
-                NSData *data = [[NSData alloc] initWithContentsOfURL:url];
-                UIImage *image = [[UIImage alloc] initWithData:data];
-                
-                [assets addObject:[self mapImageToAsset:image data:data phAsset:asset]];
-                dispatch_group_leave(completionGroup);
-            }];
-        } else if ([provider hasItemConformingToTypeIdentifier:(NSString *)kUTTypeMovie]) {
-            [provider loadFileRepresentationForTypeIdentifier:(NSString *)kUTTypeMovie completionHandler:^(NSURL * _Nullable url, NSError * _Nullable error) {
-                [assets addObject:[self mapVideoToAsset:url phAsset:asset error:nil]];
-                dispatch_group_leave(completionGroup);
-            }];
-        } else {
-            // The provider didn't have an item matching photo or video (fails on M1 Mac Simulator)
-            dispatch_group_leave(completionGroup);
-        }
-    }
-
-    dispatch_group_notify(completionGroup, dispatch_get_main_queue(), ^{
-        //  mapVideoToAsset can fail and return nil.
-        for (NSDictionary *asset in assets) {
-            if (nil == asset) {
-                self.callback(@[@{@"errorCode": errOthers}]);
-                return;
-            }
-        }
-
-        NSMutableDictionary *response = [[NSMutableDictionary alloc] init];
-        [response setObject:assets forKey:@"assets"];
-
-        self.callback(@[response]);
-    });
-}
-
-@end
-#endif
