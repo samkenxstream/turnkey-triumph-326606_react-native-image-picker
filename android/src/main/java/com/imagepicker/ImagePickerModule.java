@@ -130,6 +130,7 @@ public class ImagePickerModule extends ReactContextBaseJavaModule implements Act
         boolean isSingleSelect = this.options.selectionLimit == 1;
         boolean isPhoto = this.options.mediaType.equals(mediaTypePhoto);
         boolean isVideo = this.options.mediaType.equals(mediaTypeVideo);
+        boolean isMixed = this.options.mediaType.equals(mediaTypeMixed);
 
         if(isSingleSelect && (isPhoto || isVideo)) {
             libraryIntent = new Intent(Intent.ACTION_PICK);
@@ -146,9 +147,11 @@ public class ImagePickerModule extends ReactContextBaseJavaModule implements Act
             libraryIntent.setType("image/*");
         } else if (isVideo) {
             libraryIntent.setType("video/*");
-        } else {
+        } else if (isMixed) {
             libraryIntent.setType("*/*");
             libraryIntent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*"});
+        } else {
+            libraryIntent.setType("*/*");
         }
 
         try {

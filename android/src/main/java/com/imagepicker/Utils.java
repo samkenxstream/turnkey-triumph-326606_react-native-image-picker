@@ -51,6 +51,8 @@ public class Utils {
 
     public static String mediaTypePhoto = "photo";
     public static String mediaTypeVideo = "video";
+    public static String mediaTypeMixed = "mixed";
+    public static String mediaTypeAny = "any";
 
     public static String cameraPermissionDescription = "This library does not require Manifest.permission.CAMERA, if you add this permission in manifest then you have to obtain the same.";
 
@@ -416,7 +418,7 @@ public class Utils {
     }
 
     static ReadableMap getVideoResponseMap(Uri uri, Options options, Context context) {
-        String fileName = uri.getLastPathSegment();
+        String fileName = FileUtilsKt.getFileName(context.getContentResolver(), uri);
         WritableMap map = Arguments.createMap();
         VideoMetadata videoMetadata = new VideoMetadata(uri, context);
 
@@ -438,20 +440,38 @@ public class Utils {
         return map;
     }
 
+    static ReadableMap getFileResponseMap(Uri uri, Context context) {
+        String fileName = FileUtilsKt.getFileName(context.getContentResolver(), uri);
+
+        WritableMap map = Arguments.createMap();
+        map.putString("uri", uri.toString());
+        map.putString("fileName", fileName);
+        map.putString("type", getMimeType(uri, context));
+
+        return map;
+    }
+
     static ReadableMap getResponseMap(List<Uri> fileUris, Options options, Context context) throws RuntimeException {
+        boolean isPhoto = options.mediaType.equals(mediaTypePhoto);
+        boolean isVideo = options.mediaType.equals(mediaTypeVideo);
+        boolean isMixed = options.mediaType.equals(mediaTypeMixed);
+        boolean isAny = options.mediaType.equals(mediaTypeAny);
+
         WritableArray assets = Arguments.createArray();
 
         for(int i = 0; i < fileUris.size(); ++i) {
             Uri uri = fileUris.get(i);
 
-            if (isImageType(uri, context)) {
+            if (isImageType(uri, context) && (isPhoto || isMixed)) {
                 if (uri.getScheme().contains("content")) {
                     uri = getAppSpecificStorageUri(uri, context);
                 }
                 uri = resizeImage(uri, context, options);
                 assets.pushMap(getImageResponseMap(uri, options, context));
-            } else if (isVideoType(uri, context)) {
+            } else if (isVideoType(uri, context) && (isVideo || isMixed)) {
                 assets.pushMap(getVideoResponseMap(uri, options, context));
+            } else if (isAny) {
+                assets.pushMap(getFileResponseMap(uri, context));
             } else {
                 throw new RuntimeException("Unsupported file type");
             }
