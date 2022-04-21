@@ -446,7 +446,7 @@ public class Utils {
         WritableMap map = Arguments.createMap();
         map.putString("uri", uri.toString());
         map.putString("fileName", fileName);
-        map.putString("type", getMimeType(uri, context));
+        map.putString("mimeType", getMimeType(uri, context));
 
         return map;
     }
